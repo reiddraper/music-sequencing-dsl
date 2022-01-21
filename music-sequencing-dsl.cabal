@@ -22,7 +22,7 @@ executable music-sequencing-dsl
   hs-source-dirs:      src
   other-modules:       Data.SegmentTree, Data.Map.Delta
   -- other-extensions:
-  build-depends:       base >=4.13 && <4.14
+  build-depends:       base >=4.13
                      , containers
                      , data-interval >= 2.1
                      , extended-reals > 0.2.4

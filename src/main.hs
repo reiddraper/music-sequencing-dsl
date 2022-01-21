@@ -3,6 +3,7 @@ module Main (main) where
 import qualified Codec.Midi as Midi
 import Control.Monad (forM_)
 import qualified Data.Map as Map
+import qualified Data.Map.Delta as Delta
 import Data.Ratio ((%))
 import Data.Tuple.Extra (second)
 
@@ -48,7 +49,9 @@ samplesToEvents ::
 samplesToEvents samples = reverse $ fst $ foldl go ([], Map.empty :: MidiSound) samples
   where
     go (events, prevMidiSound) (when, midiSound) = (newEvents when prevMidiSound midiSound : events, midiSound)
-    newEvents _when _prevMidiSound _midiSound = undefined
+    newEvents _when _prevMidiSound _midiSound =
+      let diff = Delta.diff _prevMidiSound _midiSound
+       in undefined
 
 sustain :: MidiNote -> Rational -> Composition MidiSound
 sustain midiNote dur t =

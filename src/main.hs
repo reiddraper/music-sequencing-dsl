@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Main (main) where
 
 import qualified Codec.Midi as Midi
@@ -11,6 +13,7 @@ import Data.SegmentTree (queryTree)
 import qualified Data.SegmentTree as SegmentTree
 import Data.Tuple.Extra (second)
 import qualified Debug.Trace as Debug
+import System.Random (mkStdGen, uniformR)
 
 rationalRemainder :: Rational -> Rational -> Rational
 rationalRemainder x y =
@@ -65,7 +68,7 @@ trackAbsoluteTime :: Midi.Track Midi.Ticks -> Midi.Track Midi.Ticks
 trackAbsoluteTime track = reverse $ snd $ foldl trackAbsoluteTimeFolder (0, []) track
   where
     trackAbsoluteTimeFolder (absoluteTime, events) (diff, event) =
-      (absoluteTime + diff, (absoluteTime, event) : events)
+      (absoluteTime + diff, (absoluteTime + diff, event) : events)
 
 midiToMidiSoundComposition ::
   Midi.Track Midi.Ticks ->
@@ -116,7 +119,7 @@ prettyPrintRational r =
 
 main :: IO ()
 main = do
-  eMidi <- Midi.importFile "cs1-1pre.mid"
+  eMidi <- Midi.importFile "gnossienne-1.mid"
   case eMidi of
     Left s -> putStrLn $ "Error: " ++ s
     Right mi -> do
@@ -124,27 +127,54 @@ main = do
       let track = Midi.tracks mi !! 1
           trackAbsolute = trackAbsoluteTime track
           composition = midiToMidiSoundComposition trackAbsolute
-          composition2 = \t -> composition t `mappend` ((`div` 2) <$> composition (fromIntegral endTime - t))
-          endTime = maximum $ map fst $ trackAbsolute
-      let notes = sample 1 (fromIntegral $ fst $ last trackAbsolute) composition2
+          composition2 = \t ->
+            let measureLength = 480 * 4
+                measure = floor (t / measureLength) % 1
+                tick = t - (measure * measureLength)
+                newTime = ((measure + 1) * measureLength) - tick
+             in composition newTime
+          endTime = fromIntegral $ maximum $ map fst trackAbsolute
+          reversed t = composition (endTime - t)
+          -- Create a composition where each measure alternates between
+          -- being from the beginning and from the end
+          inward t =
+            let measureLength = 320
+                measure = floor (t / measureLength) % 1
+             in if even (floor measure) then composition t else reversed t
+          -- Now plus a quieter version of 1/3 of a measure ago
+          echos t = composition t `mappend` ((`div` 3) <$> composition (t - 960))
+          flange t =
+            let delay = sin (fromRational (t / (240)) :: Double) * 120
+             in composition (t + toRational delay)
+          slowlyDecaysIntoChaos t =
+            let pureGen = mkStdGen (floor t)
+                (randomVar :: Integer, _) = uniformR (0, floor $ endTime - t) pureGen
+             in if (randomVar == 0) then (reversed t) else (composition t)
+      let notes = sample 1 endTime flange
 
       putStrLn "Ticks per beat: "
       print (Midi.timeDiv mi)
 
-      putStrLn "Absolute time track:"
-      forM_ (take 40 (drop 11 trackAbsolute)) $ \(when, message) -> do
-        putStrLn $ show when ++ " " ++ show message
-      putStrLn ""
+      -- putStrLn "Track:"
+      -- forM_ track $ \(when, message) -> do
+      --   putStrLn $ show when ++ " " ++ show message
+      -- putStrLn ""
+      -- putStrLn ""
+
+      -- putStrLn "Absolute time track:"
+      -- forM_ trackAbsolute $ \(when, message) -> do
+      --   putStrLn $ show when ++ " " ++ show message
+      -- putStrLn ""
 
       putStrLn "What's happening at 1900"
       print (composition 1900)
 
       let events = samplesToEvents notes
 
-      putStrLn "Events"
-      forM_ (take 40 events) $ \(t, (channel, note, velocity, event)) -> do
-        putStrLn $ prettyPrintRational t ++ ": " ++ show channel ++ " " ++ show note ++ " " ++ show velocity ++ " " ++ show event
-      putStrLn ""
+      -- putStrLn "Events"
+      -- forM_ (take 40 events) $ \(t, (channel, note, velocity, event)) -> do
+      --   putStrLn $ prettyPrintRational t ++ ": " ++ show channel ++ " " ++ show note ++ " " ++ show velocity ++ " " ++ show event
+      -- putStrLn ""
 
       let eventToMidiMessage :: (Channel, Note, Velocity, NoteEvent) -> Midi.Message
           eventToMidiMessage (channel, note, velocity, NoteOn) = Midi.NoteOn (fromIntegral channel) (fromIntegral note) (fromIntegral velocity)
